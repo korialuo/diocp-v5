@@ -113,6 +113,7 @@ type
     procedure DecReferenceCounterAndRequestDisconnect(pvDebugInfo: string; pvObj:TObject);
 
   private
+    FCheckThreadId:THandle;
 
     FObjectAlive: Boolean;
 
@@ -170,10 +171,7 @@ type
     /// </summary>
     procedure DoReceiveData(pvRecvRequest: TIocpRecvRequest);
 
-    /// <summary>
-    ///   called by sendRequest response
-    /// </summary>
-    procedure DoSendRequestCompleted(pvRequest: TIocpSendRequest);
+
 
 
 
@@ -204,6 +202,11 @@ type
     ///   request recv data
     /// </summary>
     procedure PostWSARecvRequest();
+
+    /// <summary>
+    ///   called by sendRequest response
+    /// </summary>
+    procedure DoSendRequestCompleted(pvRequest: TIocpSendRequest);virtual;
 
     /// <summary>
     ///   post reqeust to sending queue,
@@ -306,7 +309,7 @@ type
     ///    if request is completed, will call DoSendRequestCompleted procedure
     /// </summary>
     function PostWSASendRequest(buf: Pointer; len: Cardinal; pvCopyBuf: Boolean =
-        true): Boolean; overload;
+        true; pvTag: Integer = 0; pvTagData: Pointer = nil): Boolean; overload;
     /// <summary>
     ///  post send request to iocp queue, if post successful return true.
     ///    if request is completed, will call DoSendRequestCompleted procedure
@@ -331,6 +334,8 @@ type
     property DebugInfo: string read GetDebugInfo write SetDebugInfo;
 
     function CheckActivityTimeOutEx(pvTimeOut:Integer): Boolean;
+    procedure CheckThreadIn(const pvDebugInfo: String);
+    procedure CheckThreadOut;
     function GetDebugStrings: String;
 
     property OnConnectedEvent: TNotifyContextEvent read FOnConnectedEvent write
@@ -866,6 +871,7 @@ type
   protected
     procedure DoASyncWork(pvFileWritter: TSingleFileWriter; pvASyncWorker:
         TASyncWorker); virtual;
+    procedure DoIdle();virtual;
   protected
     procedure DoAfterOpen;virtual;
     procedure DoAfterClose;virtual;
@@ -1352,8 +1358,6 @@ end;
 
 procedure TDiocpCustomContext.DoCleanUp;
 begin
-  FSendBytesSize:=0;
-  FRecvBytesSize:= 0;
   FLastActivity := 0;
   FRequestDisconnect := false;
   FSending := false;
@@ -1610,7 +1614,8 @@ end;
 
 procedure TDiocpCustomContext.OnConnected;
 begin
-
+  FSendBytesSize:=0;
+  FRecvBytesSize:= 0;
 end;
 
 procedure TDiocpCustomContext.OnDisconnected;
@@ -1704,7 +1709,8 @@ end;
 
 
 function TDiocpCustomContext.PostWSASendRequest(buf: Pointer; len: Cardinal;
-    pvCopyBuf: Boolean = true): Boolean;
+    pvCopyBuf: Boolean = true; pvTag: Integer = 0; pvTagData: Pointer = nil):
+    Boolean;
 var
   lvBuf: PAnsiChar;
 begin
@@ -1713,7 +1719,7 @@ begin
   begin
     GetMem(lvBuf, len);
     Move(buf^, lvBuf^, len);
-    Result := PostWSASendRequest(lvBuf, len, dtFreeMem);
+    Result := PostWSASendRequest(lvBuf, len, dtFreeMem, pvTag, pvTagData);
     if not Result then
     begin            //post fail
       FreeMem(lvBuf);
@@ -1721,7 +1727,7 @@ begin
   end else
   begin
     lvBuf := buf;
-    Result := PostWSASendRequest(lvBuf, len, dtNone);
+    Result := PostWSASendRequest(lvBuf, len, dtNone, pvTag, pvTagData);
   end;
 
 end;
@@ -2062,6 +2068,11 @@ procedure TDiocpCustom.DoClientContextError(pvClientContext:
 begin
   if Assigned(FOnContextError) then
     FOnContextError(pvClientContext, pvErrorCode);
+end;
+
+procedure TDiocpCustom.DoIdle;
+begin
+  
 end;
 
 procedure TDiocpCustom.DoReceiveData(pvIocpContext: TDiocpCustomContext;
@@ -2500,9 +2511,10 @@ begin
     begin
       try
         DoASyncWork(lvFileWriter, pvASyncWorker);
+        DoIdle();
         if not pvASyncWorker.Terminated then
         begin
-          self.FASyncInvoker.WaitForSleep(5000);
+          self.FASyncInvoker.WaitForSleep(100);
         end;
       except
         on e:Exception do
@@ -3810,6 +3822,24 @@ begin
   end;
 end;
 
+procedure TDiocpCustomContext.CheckThreadIn(const pvDebugInfo: String);
+begin
+  if FCheckThreadId <> 0 then
+  begin
+    //s := GetDebugString;
+    raise Exception.CreateFmt('%s=>(%d,%d)当前对象已经被其他线程正在使用',
+       [pvDebugInfo, utils_strings.GetCurrentThreadID, FCheckThreadId]);
+  end;
+  FCheckThreadId := utils_strings.GetCurrentThreadID;
+  FDebugInfo := pvDebugInfo;
+end;
+
+procedure TDiocpCustomContext.CheckThreadOut;
+begin
+  FDebugInfo := STRING_EMPTY;
+  FCheckThreadId := 0;
+end;
+
 procedure TDiocpCustomContext.DecRefernece;
 begin
   FContextLocker.lock('DecRefernece');
@@ -3896,7 +3926,6 @@ procedure TDiocpCustomContext.InnerKickOut;
 var
   lvCloseContext:Boolean;
   pvDebugInfo:String;
-  pvObj: TObject;
 begin
   InterlockedIncrement(FKickCounter);
   {$IFDEF DIOCP_DEBUG}
@@ -3905,8 +3934,7 @@ begin
 
 
   pvDebugInfo := '超时主动断开连接';
-  pvObj := nil;
-  
+
   /// 与RequestDisconnect一致，
   /// 为了记录日志
   if not FActive then
@@ -3929,7 +3957,7 @@ begin
     {$IFDEF DIOCP_DEBUG}
     if pvDebugInfo <> '' then
     begin
-      InnerAddToDebugStrings(Format('*(%d):%d,%s', [FReferenceCounter, IntPtr(pvObj), pvDebugInfo]));
+      InnerAddToDebugStrings(Format('*(%d):%d,%s', [FReferenceCounter, IntPtr(Self), pvDebugInfo]));
     end;
     {$ENDIF}
 

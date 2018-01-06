@@ -8,7 +8,7 @@
  * 2. SetArraySize, 进行申请的空间清理，避免ClearDValue造成类型混乱，出现内存操作混乱
  *　　2016-06-17 15:27:49(感谢J反馈)
 *)
-unit utils_dvalue;
+unit utils_dvalue_back;
 
 {$IF CompilerVersion>25}  // XE4(VER250)
   {$DEFINE HAVE_GENERICS}
@@ -488,8 +488,6 @@ type
     /// </summary>
     function SizeOf: Integer;
 
-    procedure SetAsVariant(const pvValue: Variant);
-
     function GetStrValueByName(const pvName, pvDefault: string): String;
     function GetIntValueByName(pvName: String; pvDefault: Int64): Int64;
     function GetFloatValueByName(pvName: String; pvDefault: Double): Double;
@@ -529,11 +527,6 @@ type
     // 对Value的访问封装, 可以直接访问Value.AsXXXX
     procedure BindObject(pvObject: TObject; pvFreeAction: TObjectFreeAction =
         faFree);
-    /// <summary>
-    ///   是否有值, 如果是字符串，为空，也会返回true
-    /// </summary>
-    function IsEmpty: Boolean;
-    function IsNull: Boolean;
 
 
 
@@ -557,6 +550,10 @@ type
     property AsObject: TObject read GetAsObject;
 
     property AsStream: TMemoryStream read GetAsStream;
+
+
+
+
   end;
 
   TDValueItem = class(TObject)
@@ -647,11 +644,6 @@ type
 
     procedure BindObject(pvObject: TObject; pvFreeAction: TObjectFreeAction =
         faFree);
-        
-    /// <summary>
-    ///   字符串，空，返回null
-    /// </summary>
-    function IsEmpty: Boolean;
 
 
     /// <summary>
@@ -727,8 +719,6 @@ function DValueGetAsDateTime(ADValue: PDRawValue): TDateTime;
 procedure DValueSetAsBoolean(ADValue:PDRawValue; pvValue:Boolean);
 function DValueGetAsBoolean(ADValue: PDRawValue): Boolean;
 
-function DValueIsEmpty(ADValue:PDRawValue): Boolean;
-
 procedure RawValueCopyFrom(pvSource, pvDest: PDRawValue; pvIgnoreValueTypes:
     TDValueDataTypes = [vdtInterface, vdtObject, vdtPtr]);
 
@@ -743,11 +733,6 @@ function GetDValuePrintDebugInfo: String;
 
 
 
-
-
-
-
-
 implementation
 
 {$IFDEF DEBUG}
@@ -755,9 +740,6 @@ var
  __create_cnt:Integer;
  __destroy_cnt:Integer;
 {$ENDIF}
-
-var
-  __DateTimeFormat:string;
 
 resourcestring
   SValueNotArray = '当前值不是数组类型，无法按数组方式访问。';
@@ -1391,9 +1373,9 @@ begin
     vdtStringW:
       Result := ADValue.Value.AsStringW^;
     vdtUnset:
-      Result := STRING_EMPTY;
+      Result := '';
     vdtNull:
-      Result := STRING_EMPTY;
+      Result := '';
     vdtBoolean:
       Result := BoolToStr(ADValue.Value.AsBoolean, True);
     vdtSingle:
@@ -1727,37 +1709,6 @@ begin
   {$ENDIF}
 end;
 
-function DValueIsEmpty(ADValue:PDRawValue): Boolean;
-begin
-  if (ADValue.ValueType in [vdtUnset, vdtNull]) then
-  begin
-    Result := True;
-  end else if (ADValue.ValueType in [vdtString]) then
-  begin
-    Result := Length(ADValue.Value.AsString^) = 0;
-  end else if (ADValue.ValueType in [vdtStringW]) then
-  begin
-    Result := Length(ADValue.Value.AsStringW^) = 0;
-  {$IFDEF HAVE_ASNI_STRING}
-  end else if (ADValue.ValueType in [vdtStringA]) then
-  begin
-    Result := Length(ADValue.Value.AsStringA^) = 0;
- {$ENDIF}
-  end else if (ADValue.ValueType in [vdtDateTime]) then
-  begin
-    Result := ADValue.Value.AsDateTime = 0;
-  end else if (ADValue.ValueType in [vdtObject, vdtPtr]) then
-  begin
-    Result := ADValue.Value.AsPointer = nil;
-  end else if (ADValue.ValueType in [vdtInterface]) then
-  begin
-    Result := ADValue.Value.AsInterface^ = nil;
-  end else
-  begin
-    Result := false;
-  end;
-end;
-
 destructor TDValueObject.Destroy;
 begin
   ClearDValue(@FRawValue);
@@ -2084,7 +2035,13 @@ var
 begin
   lvVarType := VarType(pvValue);
   Result := Add(pvName);
-  Result.SetAsVariant(pvValue);
+  case lvVarType of
+    varSmallInt, varInteger, varShortInt: Result.AsInteger := pvValue;
+    varSingle, varDouble: Result.AsFloat := pvValue;
+    varDate: Result.AsString := FormatDateTime('yyyy-MM-dd hh:nn:ss.zzz', pvValue);
+  else
+    Result.AsString := pvValue;
+  end;
 end;
 
 procedure TDValue.AttachDValue(const pvName: String; pvDValue: TDValue);
@@ -2865,20 +2822,6 @@ begin
   FValue.SetAsUInt(Value);
 end;
 
-procedure TDValue.SetAsVariant(const pvValue: Variant);
-var
-  lvVarType:TVarType;
-begin
-  lvVarType := VarType(pvValue);
-  case lvVarType of
-    varSmallInt, varInteger, varShortInt: SetAsInteger(pvValue);
-    varSingle, varDouble: SetAsFloat(pvValue);
-    varDate: SetAsDateTime(pvValue);
-  else
-    SetAsString(pvValue);
-  end;
-end;
-
 procedure TDValue.DoLastModify;
 begin
   FLastModify := GetTickCount;
@@ -2909,16 +2852,6 @@ end;
 function TDValue.GetAsDateTime: TDateTime;
 begin
   Result := FValue.AsDateTime;
-end;
-
-function TDValue.IsEmpty: Boolean;
-begin
-  Result := FValue.IsEmpty; 
-end;
-
-function TDValue.IsNull: Boolean;
-begin
-  Result := FValue.FRawValue.ValueType in [vdtUnset, vdtNull];
 end;
 
 procedure TDValue.SetAsDateTime(const Value: TDateTime);
@@ -3159,11 +3092,6 @@ begin
   Result := FRawValue.ValueType;
 end;
 
-function TDValueItem.IsEmpty: Boolean;
-begin
-  Result := DValueIsEmpty(@FRawValue);
-end;
-
 procedure TDValueItem.SetArraySize(const Value: Integer);
 var
   lvOldSize:Integer;
@@ -3228,10 +3156,6 @@ function TDValueItem.SizeOf: Integer;
 begin
   Result := GetDValueSize(@FRawValue);
 end;
-
-
-initialization
-  __DateTimeFormat := 'yyyy-MM-dd hh:nn:ss.zzz';
 
 
 end.

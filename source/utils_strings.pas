@@ -48,7 +48,11 @@ const
 {$IFDEF MSWINDOWS}
   STRING_EMPTY_A :AnsiString = '';
 {$ENDIF}
+{$IF (RTLVersion>=26)}
+  STRING_EMPTY_W: String = '';
+{$ELSE}
   STRING_EMPTY_W: WideString = '';
+{$IFEND >=XE5}
 
 type
 {$IFDEF MSWINDOWS}
@@ -122,6 +126,8 @@ type
   PArrayStrings = ^ TArrayStrings;
 
   TCharArray = array of Char;
+
+  TCharWArray = array of DCharW;
   
   TDStringBuilder = class(TObject)
   private
@@ -134,20 +140,24 @@ type
   public
     constructor Create;
     procedure Clear;
+    procedure ClearContent;
     function Append(c:Char): TDStringBuilder;  overload;
-    function Append(str:string): TDStringBuilder; overload;
-    function Append(str:string; pvLeftStr:string; pvRightStr:String):
-        TDStringBuilder; overload;
+    function Append(const str: string): TDStringBuilder; overload;
+    function Append(const str, pvLeftStr, pvRightStr: string): TDStringBuilder;
+        overload;
     function Append(v: Boolean; UseBoolStrs: Boolean = True): TDStringBuilder;
         overload;
     function Append(v:Integer): TDStringBuilder; overload;
     function Append(v:Double): TDStringBuilder; overload;
-    function AppendQuoteStr(str:string): TDStringBuilder;
-    function AppendSingleQuoteStr(str:string): TDStringBuilder;
-    function AppendLine(str:string): TDStringBuilder;
+    function AppendQuoteStr(const str: string): TDStringBuilder;
+    function AppendSingleQuoteStr(const str: string): TDStringBuilder;
+    function AppendLine(const str: string): TDStringBuilder;
 
     function ToString: string;{$IFDEF UNICODE}override;{$ENDIF}
     property Length: Integer read GetLength;
+
+    procedure SaveToFile(const pvFile: String);
+    procedure SaveToStream(pvStream:TStream);
 
     /// <summary>
     ///   换行符: 默认#13#10
@@ -175,25 +185,32 @@ type
     function Append(const aByte:Byte): TDBufferBuilder; overload;
     function Append(const w:Word):TDBufferBuilder; overload;
     function Append(const c: Char): TDBufferBuilder; overload;
-    function Append(str:string): TDBufferBuilder; overload;
-    function Append(str:string; pvLeftStr:string; pvRightStr:String):
-        TDBufferBuilder; overload;
+    function Append(const str: string): TDBufferBuilder; overload;
+    function Append(const str, pvLeftStr, pvRightStr: string): TDBufferBuilder;
+        overload;
     function Append(v: Boolean; UseBoolStrs: Boolean = True): TDBufferBuilder;
         overload;
     function Append(v:Integer): TDBufferBuilder; overload;
     function Append(v:Double): TDBufferBuilder; overload;
-    function AppendUtf8(str:String): TDBufferBuilder;
-    function AppendRawStr(pvRawStr:RAWString): TDBufferBuilder;
-    function AppendBreakLineBytes: TDBufferBuilder;
-    function Append(str: string; pvConvertToUtf8Bytes: Boolean): TDBufferBuilder; overload;
-    function AppendQuoteStr(str:string): TDBufferBuilder;
-    function AppendSingleQuoteStr(str:string): TDBufferBuilder;
-    function AppendLine(str:string): TDBufferBuilder;
+    function AppendUtf8(const str: String): TDBufferBuilder;
 
-    procedure LoadFromFile(pvFileName:string);
+    /// <summary>
+    ///  推荐用该方法
+    /// </summary>
+    function AppendStringAsUTF8(const str:DStringW): TDBufferBuilder;
+
+    function AppendRawStr(const pvRawStr: RAWString): TDBufferBuilder;
+    function AppendBreakLineBytes: TDBufferBuilder;
+    function Append(const str: string; pvConvertToUtf8Bytes: Boolean):
+        TDBufferBuilder; overload;
+    function AppendQuoteStr(const str: string): TDBufferBuilder;
+    function AppendSingleQuoteStr(const str: string): TDBufferBuilder;
+    function AppendLine(const str: string): TDBufferBuilder;
+
+    procedure LoadFromFile(const pvFileName: string);
 
     procedure LoadFromStream(pvStream: TStream); overload;
-    procedure SaveToFile(pvFile:String);
+    procedure SaveToFile(const pvFile: String);
 
     procedure SaveToStream(pvStream:TStream);
 
@@ -274,9 +291,43 @@ type
     /// </summary>
     property Remain: Integer read GetRemain;
 
+  end;
 
 
+  TDStringWBuilder = class(TObject)
+  private
+    FData: TCharWArray;
+    FPosition: Integer;
+    FCapacity :Integer;
+    FLineBreak: DStringW;
+    procedure CheckNeedSize(pvSize: LongInt);
+    function GetLength: Integer;
+  public
+    constructor Create;
+    procedure Clear;
+    procedure ClearContent;
+    function Append(c: DCharW): TDStringWBuilder; overload;
+    function Append(const str: DStringW): TDStringWBuilder; overload;
+    function Append(const str, pvLeftStr, pvRightStr: DStringW): TDStringWBuilder;
+        overload;
+    function Append(v: Boolean; UseBoolStrs: Boolean = True): TDStringWBuilder;
+        overload;
+    function Append(v:Integer): TDStringWBuilder; overload;
+    function Append(v:Double): TDStringWBuilder; overload;
+    function AppendQuoteStr(const str: DStringW): TDStringWBuilder;
+    function AppendSingleQuoteStr(const str: DStringW): TDStringWBuilder;
+    function AppendLine(const str: DStringW): TDStringWBuilder;
 
+    function ToString: DStringW;{$IFDEF UNICODE}override;{$ENDIF}
+    property Length: Integer read GetLength;
+
+    procedure SaveToFile(const pvFile: String);
+    procedure SaveToStream(pvStream:TStream);
+
+    /// <summary>
+    ///   换行符: 默认#13#10
+    /// </summary>
+    property LineBreak: DStringW read FLineBreak write FLineBreak;
   end;
 
 
@@ -400,8 +451,8 @@ function SplitStrings(const s: String; pvStrings: TStrings; pvSpliterChars:
 /// <param name="s"> 源字符串 </param>
 /// <param name="pvStrings"> 输出到的字符串列表 </param>
 /// <param name="pvSpliterChars"> 分隔符 </param>
-function SplitToArrayStr(const s: String; pvSpliterChars: TSysCharSet):
-    TArrayStrings;
+function SplitToArrayStr(const s: String; pvSpliterChars: TSysCharSet;
+    pvSkipSpliterChars: Boolean = false): TArrayStrings;
 
 
 /// <summary>
@@ -540,6 +591,14 @@ function DeleteChars(const s: string; pvCharSets: TSysCharSet): string;
 function StringToUtf8Bytes(const pvData: String; pvBytes: TBytes): Integer;
     overload;
 function StringToUtf8Bytes(const pvData: string; pvProcessEndByte: Boolean = false): TBytes; overload;
+
+
+function StringWToUtf8Bytes(const Source: PDCharW; SourceChars:Cardinal;
+    pvDest: Pointer; MaxDestBytes: Cardinal): Cardinal; overload;
+
+function StringWToUtf8Bytes(const pvSourceData: DStringW): TBytes; overload;
+
+
 /// <summary>
 ///
 /// </summary>
@@ -588,7 +647,8 @@ function PickString(p: PChar; pvOffset, pvCount: Integer): String;
 /// </summary>
 function LoadStringFromUtf8NoBOMFile(pvFile:string): String;
 
-procedure WriteStringToUtf8NoBOMFile(pvFile, pvData: String);
+procedure WriteStringToUtf8NoBOMFile(const pvFile: String; const pvData:
+    DStringW);
 
 /// <summary>
 ///   转换字符串,
@@ -611,6 +671,7 @@ function ObjectIntStrAddr(pvObj:TObject): String;
 
 function DateTimeString(pvDateTime:TDateTime): string; {$IFDEF HAVE_INLINE} inline;{$ENDIF}
 function NowString: String; {$IFDEF HAVE_INLINE} inline;{$ENDIF}
+function DateTimeStrToDateTime(const strDateTime:string):TDateTime;{$IFDEF HAVE_INLINE} inline;{$ENDIF}
 
 function tick_diff(tick_start, tick_end: Cardinal): Cardinal;
 
@@ -622,6 +683,10 @@ procedure SwapBuff(buf: Pointer; offset, len: Integer); overload;
 function NewPString(const s: string): PString;
 
 function GetStringFromPString(const p:Pointer): string;
+
+function NewPDStringW(const s:DStringW): PDStringW;
+
+function GetDStringWFromPtr(const p:Pointer): DStringW;
 
 function NewMapKeyString(const key:Integer; const s:string): PMAPKeyString;
 
@@ -652,6 +717,9 @@ var
 {$ENDIF}
 //  VCMemCmp: TMSVCMemCmp;
 {$ENDIF}
+
+var
+  __DateFormat: TFormatSettings;
 
 procedure PrintDebugString(s:string);
 begin
@@ -816,7 +884,7 @@ begin
   end;
   if lvMatched = 0 then
   begin   // 没有匹配到
-    Result := '';
+    Result := STRING_EMPTY;
   end else
   begin   // 匹配到
     l := lvPTemp-P;
@@ -1031,8 +1099,8 @@ begin
   end;
 end;
 
-function SplitToArrayStr(const s: String; pvSpliterChars: TSysCharSet):
-    TArrayStrings;
+function SplitToArrayStr(const s: String; pvSpliterChars: TSysCharSet;
+    pvSkipSpliterChars: Boolean = false): TArrayStrings;
 var
   p:PChar;
   lvValue : String;
@@ -1057,6 +1125,7 @@ begin
     // 跳过开头
     r := LeftUntil(P, pvSpliterChars, lvValue);
 
+
     if r = -1 then
     begin    // 没有匹配到
       if P^ <> #0 then
@@ -1075,7 +1144,12 @@ begin
       Inc(idx);
       Inc(P);
     end;
+
+    if (pvSkipSpliterChars) then  // 跳过分隔符？
+      SkipChars(P, pvSpliterChars);
   end;
+
+  SetLength(Result, idx + 1);
 end;
 
 
@@ -1519,6 +1593,7 @@ begin
 {$ELSE}
   lvRawStr := UTF8Encode(pvData);
   Result := Length(lvRawStr);
+  if Result > Length(pvBytes) then Result := Length(pvBytes);
   Move(PAnsiChar(lvRawStr)^, pvBytes[0], Result);
 {$ENDIF}
 end;
@@ -1693,7 +1768,7 @@ begin
   Result := Self;
 end;
 
-function TDStringBuilder.Append(str:string): TDStringBuilder;
+function TDStringBuilder.Append(const str: string): TDStringBuilder;
 var
   l:Integer;
 begin
@@ -1727,23 +1802,24 @@ begin
   Result := Append(FloatToStr(v));
 end;
 
-function TDStringBuilder.Append(str:string; pvLeftStr:string;
-    pvRightStr:String): TDStringBuilder;
+function TDStringBuilder.Append(const str, pvLeftStr, pvRightStr: string):
+    TDStringBuilder;
 begin
   Result := Append(pvLeftStr).Append(str).Append(pvRightStr);
 end;
 
-function TDStringBuilder.AppendLine(str:string): TDStringBuilder;
+function TDStringBuilder.AppendLine(const str: string): TDStringBuilder;
 begin
   Result := Append(Str).Append(FLineBreak);
 end;
 
-function TDStringBuilder.AppendQuoteStr(str:string): TDStringBuilder;
+function TDStringBuilder.AppendQuoteStr(const str: string): TDStringBuilder;
 begin
   Result := Append('"').Append(str).Append('"');
 end;
 
-function TDStringBuilder.AppendSingleQuoteStr(str:string): TDStringBuilder;
+function TDStringBuilder.AppendSingleQuoteStr(const str: string):
+    TDStringBuilder;
 begin
   Result := Append('''').Append(str).Append('''');
 end;
@@ -1770,9 +1846,42 @@ begin
   SetLength(FData, 0);
 end;
 
+procedure TDStringBuilder.ClearContent;
+begin
+  FPosition := 0;
+  if FCapacity > 0 then
+  begin
+    FillChar(FData[0], FCapacity, 0);
+  end;
+end;
+
 function TDStringBuilder.GetLength: Integer;
 begin
   Result := FPosition;
+end;
+
+procedure TDStringBuilder.SaveToFile(const pvFile: String);
+var
+  Stream: TStream;
+begin
+  Stream := TFileStream.Create(pvFile, fmCreate);
+  try
+    SaveToStream(Stream);
+  finally
+    Stream.Free;
+  end;
+end;
+
+procedure TDStringBuilder.SaveToStream(pvStream:TStream);
+var
+  l:Integer;
+begin
+  l := self.Length;
+{$IFDEF UNICODE}
+  l := l shl 1;
+{$ENDIF}
+
+  if l <> 0 then pvStream.WriteBuffer(FData[0], l);
 end;
 
 function TDStringBuilder.ToString: string;
@@ -1812,7 +1921,7 @@ begin
 
 end;
 
-function TDBufferBuilder.Append(str:string): TDBufferBuilder;
+function TDBufferBuilder.Append(const str: string): TDBufferBuilder;
 var
   l:Integer;
 begin
@@ -1841,8 +1950,8 @@ begin
   Result := Append(FloatToStr(v));
 end;
 
-function TDBufferBuilder.Append(str:string; pvLeftStr:string;
-    pvRightStr:String): TDBufferBuilder;
+function TDBufferBuilder.Append(const str, pvLeftStr, pvRightStr: string):
+    TDBufferBuilder;
 begin
   Result := Append(pvLeftStr).Append(str).Append(pvRightStr);
 end;
@@ -1852,8 +1961,8 @@ begin
   Result := AppendBuffer(@aByte, 1);
 end;
 
-function TDBufferBuilder.Append(str: string; pvConvertToUtf8Bytes: Boolean):
-    TDBufferBuilder;
+function TDBufferBuilder.Append(const str: string; pvConvertToUtf8Bytes:
+    Boolean): TDBufferBuilder;
 var
   lvBytes:TBytes;
 begin
@@ -1906,12 +2015,12 @@ begin
   Result := Self;
 end;
 
-function TDBufferBuilder.AppendLine(str:string): TDBufferBuilder;
+function TDBufferBuilder.AppendLine(const str: string): TDBufferBuilder;
 begin
   Result := Append(Str).Append(FLineBreak);
 end;
 
-function TDBufferBuilder.AppendQuoteStr(str:string): TDBufferBuilder;
+function TDBufferBuilder.AppendQuoteStr(const str: string): TDBufferBuilder;
 begin
   Result := Append('"').Append(str).Append('"');
 end;
@@ -1920,7 +2029,8 @@ end;
 
 
 
-function TDBufferBuilder.AppendRawStr(pvRawStr:RAWString): TDBufferBuilder;
+function TDBufferBuilder.AppendRawStr(const pvRawStr: RAWString):
+    TDBufferBuilder;
 begin
 {$IFDEF MSWINDOWS}
   Result := AppendBuffer(PByte(pvRawStr), System.Length(pvRawStr));
@@ -1931,15 +2041,37 @@ end;
 
 
 
-function TDBufferBuilder.AppendSingleQuoteStr(str:string): TDBufferBuilder;
+function TDBufferBuilder.AppendSingleQuoteStr(const str: string):
+    TDBufferBuilder;
 begin
   Result := Append('''').Append(str).Append('''');
 end;
 
-function TDBufferBuilder.AppendUtf8(str:String): TDBufferBuilder;
+function TDBufferBuilder.AppendStringAsUTF8(const str:DStringW):
+    TDBufferBuilder;
+var
+  l, l1, l2: Integer;
+begin
+  if FBufferLocked then
+  begin
+    raise Exception.Create('Buffer Locked');
+  end;
+
+  Result := Self;
+  if System.Length(str) = 0 then Exit;
+  l1 := System.Length(str);
+  l2 := l1 shl 1 + l1;
+  CheckNeedSize(l1);
+  l := StringWToUtf8Bytes(PDCharW(str), l1, @FData[FSize], l2);
+  Inc(FSize, l);
+  // 移动Position
+  FPosition := FSize;
+end;
+
+function TDBufferBuilder.AppendUtf8(const str: String): TDBufferBuilder;
 var
   lvBytes:TBytes;
-begin 
+begin
   Result := Self;
   lvBytes := StringToUtf8Bytes(str);
   AppendBuffer(PByte(@lvBytes[0]), System.Length(lvBytes));
@@ -2027,7 +2159,7 @@ begin
   Result := FSize - FPosition;
 end;
 
-procedure TDBufferBuilder.LoadFromFile(pvFileName:string);
+procedure TDBufferBuilder.LoadFromFile(const pvFileName: string);
 var
   Stream: TStream;
 begin
@@ -2125,7 +2257,7 @@ begin
   FBufferLocked := False;
 end;
 
-procedure TDBufferBuilder.SaveToFile(pvFile:String);
+procedure TDBufferBuilder.SaveToFile(const pvFile: String);
 var
   Stream: TStream;
 begin
@@ -2256,24 +2388,19 @@ begin
   end;
 end;
 
-procedure WriteStringToUtf8NoBOMFile(pvFile, pvData: String);
+procedure WriteStringToUtf8NoBOMFile(const pvFile: String; const pvData:
+    DStringW);
 var
   lvStream: TMemoryStream;
-{$IFDEF UNICODE}
   lvBytes:TBytes;
-{$ELSE}
-  lvStr: AnsiString;
-{$ENDIF}
+
 begin
   lvStream := TMemoryStream.Create;
   try
-    {$IFDEF UNICODE}
-    lvBytes := TEncoding.UTF8.GetBytes(pvData);
-    lvStream.WriteBuffer(lvBytes[0], Length(lvBytes));
-    {$ELSE}
-    lvStr := UTF8Encode(pvData);
-    lvStream.WriteBuffer(PAnsiChar(lvStr)^, Length(lvStr));
-    {$ENDIF}
+    lvBytes := StringWToUtf8Bytes(pvData);
+
+    lvStream.Write(lvBytes[0], Length(lvBytes));
+
     lvStream.SaveToFile(pvFile);
   finally
     lvStream.Free;
@@ -2312,10 +2439,10 @@ begin
 {$IFDEF UNICODE}
   Result := TEncoding.Default.GetBytes(pvData);
 {$ELSE}
+  // 应该保持一致不值后面加\0
   lvRawStr := pvData;
-  SetLength(Result, Length(lvRawStr) + 1);
+  SetLength(Result, Length(lvRawStr));
   Move(PAnsiChar(lvRawStr)^, Result[0], Length(lvRawStr));
-  Result[Length(Result) -1] := 0;
 {$ENDIF}
 end;
 
@@ -2346,6 +2473,12 @@ end;
 function ObjectIntStrAddr(pvObj:TObject): String;
 begin
   Result := IntToStr(IntPtr(pvObj));
+end;
+
+
+function DateTimeStrToDateTime(const strDateTime:string): TDateTime;
+begin
+  Result := SysUtils.StrToDateTime(strDateTime, __DateFormat);
 end;
 
 function DateTimeString(pvDateTime:TDateTime): string;
@@ -2495,11 +2628,249 @@ begin
   Move(pvBuffer^, PDCharW(Result)^, pvBufLength);
 end;
 
+function StringWToUtf8Bytes(const Source: PDCharW; SourceChars: Cardinal;
+    pvDest: Pointer; MaxDestBytes: Cardinal): Cardinal;
+var
+  i, count: Cardinal;
+  c: Cardinal;
+  lvDest:PByte;
+begin
+  Result := 0;
+  if Source = nil then Exit;
+  count := 0;
+  i := 0;
+  if pvDest <> nil then
+  begin
+    lvDest := PByte(pvDest);
+    while (i < SourceChars) and (count < MaxDestBytes) do
+    begin
+      c := Cardinal(Source[i]);
+      Inc(i);
+      if c <= $7F then
+      begin
+        lvDest^ := (c); inc(lvDest);
+        Inc(count);
+      end
+      else if c > $7FF then
+      begin
+        if count + 3 > MaxDestBytes then
+          break;
+        lvDest^ := ($E0 or (c shr 12)); inc(lvDest);
+        lvDest^ := ($80 or ((c shr 6) and $3F));inc(lvDest);
+        lvDest^ := ($80 or (c and $3F));inc(lvDest);
+        inc(count,3);
+      end
+      else //  $7F < Source[i] <= $7FF
+      begin
+        if count + 2 > MaxDestBytes then
+          break;
+        lvDest^ := ($C0 or (c shr 6)); inc(lvDest);
+        lvDest^ := ($80 or (c and $3F)); inc(lvDest);
+        Inc(count,2);
+      end;
+    end;
+    Assert(count <= MaxDestBytes, '有越界的可能,检测代码(StringWToUtf8Bytes)');
+  end
+  else
+  begin    // 只计算长度
+    while i < SourceChars do
+    begin
+      c := Integer(Source[i]);
+      Inc(i);
+      if c > $7F then
+      begin
+        if c > $7FF then
+          Inc(count);
+        Inc(count);
+      end;
+      Inc(count);
+    end;
+  end;
+  Result := count;
+end;
+
+function StringWToUtf8Bytes(const pvSourceData: DStringW): TBytes; overload;
+var
+  L, l1: Integer;
+begin
+  if length(pvSourceData) = 0 then
+  begin
+    SetLength(Result, 0);
+    Exit;
+  end;
+  l1 := Length(pvSourceData);
+  l1 := l1 shl 1 + l1;
+  SetLength(Result, l1); // SetLength includes space for null terminator
+  L := StringWToUtf8Bytes(PWideChar(pvSourceData), Length(pvSourceData), @Result[0], Length(Result));
+  if L > 0 then
+    SetLength(Result, L)   // 去掉最后0
+  else
+    SetLength(Result, 0);
+end;
+
+function NewPDStringW(const s:DStringW): PDStringW;
+begin
+  New(Result);
+  Result^ := s;
+end;
+
+function GetDStringWFromPtr(const p:Pointer): DStringW;
+begin
+  if p = nil then
+  begin
+    Result := STRING_EMPTY;
+  end else
+  begin
+    Result := PDStringW(p)^;
+  end;
+end;
+
+constructor TDStringWBuilder.Create;
+begin
+  inherited Create;
+{$if CompilerVersion> 18}    // Delphi7 or later
+  FLineBreak := DCharW(13) + DCharW(10);
+{$else}
+  FLineBreak := #13#10;
+{$ifend}
+end;
+
+function TDStringWBuilder.Append(c: DCharW): TDStringWBuilder;
+begin
+  CheckNeedSize(1);
+  FData[FPosition] := c;
+  Inc(FPosition);
+  Result := Self;
+end;
+
+function TDStringWBuilder.Append(const str: DStringW): TDStringWBuilder;
+var
+  l:Integer;
+begin
+  Result := Self;
+  l := System.Length(str);
+  if l = 0 then Exit;
+  CheckNeedSize(l);
+
+  Move(PDCharW(str)^, FData[FPosition], l shl 1);
 
 
+  Inc(FPosition, l);
 
+end;
 
-initialization
+function TDStringWBuilder.Append(v: Boolean; UseBoolStrs: Boolean = True):
+    TDStringWBuilder;
+begin
+  Result := Append(BoolToStr(v, UseBoolStrs));
+end;
+
+function TDStringWBuilder.Append(v:Integer): TDStringWBuilder;
+begin
+  Result :=Append(IntToStr(v));
+end;
+
+function TDStringWBuilder.Append(v:Double): TDStringWBuilder;
+begin
+  Result := Append(FloatToStr(v));
+end;
+
+function TDStringWBuilder.Append(const str, pvLeftStr, pvRightStr: DStringW):
+    TDStringWBuilder;
+begin
+  Result := Append(pvLeftStr).Append(str).Append(pvRightStr);
+end;
+
+function TDStringWBuilder.AppendLine(const str: DStringW): TDStringWBuilder;
+begin
+  Result := Append(Str).Append(FLineBreak);
+end;
+
+function TDStringWBuilder.AppendQuoteStr(const str: DStringW): TDStringWBuilder;
+begin
+  Result := Append('"').Append(str).Append('"');
+end;
+
+function TDStringWBuilder.AppendSingleQuoteStr(const str: DStringW):
+    TDStringWBuilder;
+begin
+  Result := Append('''').Append(str).Append('''');
+end;
+
+procedure TDStringWBuilder.CheckNeedSize(pvSize: LongInt);
+var
+  lvCapacity:LongInt;
+begin
+  if FPosition + pvSize > FCapacity then
+  begin
+    lvCapacity := (FPosition + pvSize + (BUFFER_BLOCK_SIZE - 1)) AND (not (BUFFER_BLOCK_SIZE - 1));
+    FCapacity := lvCapacity;
+    SetLength(FData, FCapacity);     
+  end;
+end;
+
+procedure TDStringWBuilder.Clear;
+begin
+  FPosition := 0;
+
+  // modify by ymf
+  // 2017-01-10 17:36:13
+  FCapacity := 0;
+  SetLength(FData, 0);
+end;
+
+procedure TDStringWBuilder.ClearContent;
+begin
+  FPosition := 0;
+  if FCapacity > 0 then
+  begin
+    FillChar(FData[0], FCapacity, 0);
+  end;
+end;
+
+function TDStringWBuilder.GetLength: Integer;
+begin
+  Result := FPosition;
+end;
+
+procedure TDStringWBuilder.SaveToFile(const pvFile: String);
+var
+  Stream: TStream;
+begin
+  Stream := TFileStream.Create(pvFile, fmCreate);
+  try
+    SaveToStream(Stream);
+  finally
+    Stream.Free;
+  end;
+end;
+
+procedure TDStringWBuilder.SaveToStream(pvStream:TStream);
+var
+  l:Integer;
+begin
+  l := self.Length;
+  l := l shl 1;
+
+  if l <> 0 then pvStream.WriteBuffer(FData[0], l);
+end;
+
+function TDStringWBuilder.ToString: DStringW;
+var
+  l:Integer;
+begin
+  l := Length;
+  SetLength(Result, l);                
+  Move(FData[0], PDCharW(Result)^, l shl 1); 
+end;
+
+initialization  
+  __DateFormat.DateSeparator := '-';
+  __DateFormat.TimeSeparator := ':';
+  __DateFormat.ShortDateFormat := 'yyyy-MM-dd';
+  __DateFormat.LongDateFormat := 'yyyy-MM-dd';
+  __DateFormat.ShortTimeFormat := 'HH:mm:ss';
+  __DateFormat.LongTimeFormat := 'HH:mm:ss';
 
 {$IFDEF MSWINDOWS}
 

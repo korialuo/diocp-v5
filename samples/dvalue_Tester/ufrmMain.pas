@@ -6,8 +6,7 @@ uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ExtCtrls, utils_DValue, utils_strings, ComCtrls,
   utils_dvalue_multiparts, utils_dvalue_msgpack, utils_base64, utils_dvalue_dataset,
-  DB, DBClient, ComObj, Grids, DBGrids, utils_byteTools, utils_textfile,
-  qstring;
+  DB, DBClient, ComObj, Grids, DBGrids, utils_byteTools, utils_textfile;
 
 type
   TForm1 = class(TForm)
@@ -288,9 +287,8 @@ begin
   lvDValue2 := lvDValue.UnAttach(0);
   ShowMessage(JSONEncode(lvDValue2));
 
-  lvDValue.Free;
-
-  lvDValue2.Free;
+  DisposeDValueObject(lvDValue);
+  DisposeDValueObject(lvDValue2);
 
 
 end;
@@ -348,20 +346,21 @@ var
   lvValue:Integer;
   lvSB:TDStringBuilder;
   s:String;
+  lvBytes:TBytes;
 begin
   lvDValue := TDValue.Create();
   lvDValue.ForceByPath('p2.obj').BindObject(Self, faNone);
   lvDValue.ForceByPath('p2.n').AsInteger := 3;
-  lvDValue.ForceByName('name').AsString := '张三abc';
-  lvDValue.ForceByName('__msgid').AsInteger := 1001;
-  lvDValue.ForceByPath('p1.name').AsString := 'D10.天地弦';
-  lvDValue.ForceByPath('p2.p2_1.name').AsString := 'D10.天地弦';
-  lvDValue.ForceByPath('p2.num').AsInteger := 1;
-
-
-  lvItem := lvDValue.ForceByName('array').AddArrayChild;
-  lvItem.ForceByName('key1').AsString := '数组元素1';
-  lvDValue.ForceByName('array').AddArrayChild.AsString := '数组元素2';
+//  lvDValue.ForceByName('name').AsString := '张三abc';
+//  lvDValue.ForceByName('__msgid').AsInteger := 1001;
+//  lvDValue.ForceByPath('p1.name').AsString := 'D10.天地弦';
+//  lvDValue.ForceByPath('p2.p2_1.name').AsString := 'D10.天地弦';
+//  lvDValue.ForceByPath('p2.num').AsInteger := 1;
+//
+//
+//  lvItem := lvDValue.ForceByName('array').AddArrayChild;
+//  lvItem.ForceByName('key1').AsString := '数组元素1';
+//  lvDValue.ForceByName('array').AddArrayChild.AsString := '数组元素2';
 
   s :=JSONEncode(lvDValue, true, False, [vdtObject]);
   if trim(mmoData.Lines.Text) = '' then
@@ -370,6 +369,9 @@ begin
   end;
 
   lvDValue.Free;
+
+  lvBytes := StringToBytes(Trim(s));
+  mmoData.Lines.Add(TByteTools.varToHexString(lvBytes[0], Length(lvBytes)));
 
   ShowMessage(s);
 end;
@@ -439,15 +441,15 @@ procedure TForm1.btnLoadTextFromClick(Sender: TObject);
 var
   s, lvFileName:String;
 begin
-  lvFileName := ExtractFilePath(ParamStr(0)) + 'text.txt';
-  mmoLog.Clear;
-  s := LoadTextFromFile(lvFileName);
-  mmoLog.Lines.Add(s);
-
-  s := LoadTextA(lvFileName);
-
-  mmoLog.Lines.Add('=================');
-  mmoLog.Lines.Add(s);
+//  lvFileName := ExtractFilePath(ParamStr(0)) + 'text.txt';
+//  mmoLog.Clear;
+//  s := LoadTextFromFile(lvFileName);
+//  mmoLog.Lines.Add(s);
+//
+//  s := LoadTextA(lvFileName);
+//
+//  mmoLog.Lines.Add('=================');
+//  mmoLog.Lines.Add(s);
 
 end;
 
